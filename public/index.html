@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Temperature Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .temperature .value {
+            color: #e74c3c;
+        }
+
+        .status .value {
+            color: #27ae60;
+        }
+
+        .threshold .value {
+            color: #f39c12;
+        }
+
+        .alerts .value {
+            color: #8e44ad;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .chart-container h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .connected {
+            background: #27ae60;
+        }
+
+        .disconnected {
+            background: #e74c3c;
+        }
+
+        .alert-banner {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .footer {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 30px;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .status-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-wrapper {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="connection-status" id="connectionStatus">Connecting...</div>
+        
+        <div class="header">
+            <h1>🌡️ Water Temperature Monitor</h1>
+            <p>Real-time temperature monitoring system</p>
+        </div>
+
+        <div class="alert-banner" id="alertBanner">
+            ⚠️ LOW TEMPERATURE ALERT: Water temperature has dropped below threshold!
+        </div>
+
+        <div class="status-cards">
+            <div class="card temperature">
+                <h3>Current Temperature</h3>
+                <div class="value" id="currentTemp">--°C</div>
+                <small id="lastUpdate">No data</small>
+            </div>
+            
+            <div class="card status">
+                <h3>System Status</h3>
+                <div class="value" id="systemStatus">Monitoring</div>
+                <small id="connectionTime">--</small>
+            </div>
+            
+            <div class="card threshold">
+                <h3>Alert Threshold</h3>
+                <div class="value" id="threshold">--°C</div>
+                <small>Minimum safe temperature</small>
+            </div>
+            
+            <div class="card alerts">
+                <h3>Alert Count</h3>
+                <div class="value" id="alertCount">0</div>
+                <small>Today</small>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Temperature History</h2>
+            <div class="chart-wrapper">
+                <canvas id="temperatureChart"></canvas>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>🔧 Raspberry Pi Water Temperature Monitoring System | Last updated: <span id="footerTime">--</span></p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // Chart configuration
+        const ctx = document.getElementById('temperatureChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Water Temperature (°C)',
+                    data: [],
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointHoverRadius: 5
+                }, {
+                    label: 'Alert Threshold',
+                    data: [],
+                    borderColor: '#f39c12',
+                    backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        },
+                        min: 0,
+                        max: 40
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                },
+                animation: {
+                    duration: 500
+                }
+            }
+        });
+
+        // Global variables
+        let alertCount = 0;
+        let threshold = 15;
+        let connectionStartTime = new Date();
+
+        // DOM elements
+        const elements = {
+            currentTemp: document.getElementById('currentTemp'),
+            lastUpdate: document.getElementById('lastUpdate'),
+            systemStatus: document.getElementById('systemStatus'),
+            connectionTime: document.getElementById('connectionTime'),
+            threshold: document.getElementById('threshold'),
+            alertCount: document.getElementById('alertCount'),
+            connectionStatus: document.getElementById('connectionStatus'),
+            alertBanner: document.getElementById('alertBanner'),
+            footerTime: document.getElementById('footerTime')
+        };
+
+        // Utility functions
+        function formatTime(dateString) {
+            return new Date(dateString).toLocaleTimeString();
+        }
+
+        function updateConnectionTime() {
+            const now = new Date();
+            const diff = Math.floor((now - connectionStartTime) / 1000);
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            const seconds = diff % 60;
+            
+            if (hours > 0) {
+                elements.connectionTime.textContent = `${hours}h ${minutes}m online`;
+            } else if (minutes > 0) {
+                elements.connectionTime.textContent = `${minutes}m ${seconds}s online`;
+            } else {
+                elements.connectionTime.textContent = `${seconds}s online`;
+            }
+        }
+
+        function updateFooterTime() {
+            elements.footerTime.textContent = new Date().toLocaleString();
+        }
+
+        function updateChart(reading) {
+            const time = formatTime(reading.timestamp);
+            
+            // Add new data point
+            chart.data.labels.push(time);
+            chart.data.datasets[0].data.push(reading.temperature);
+            chart.data.datasets[1].data.push(threshold);
+            
+            // Keep only last 50 data points
+            if (chart.data.labels.length > 50) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+                chart.data.datasets[1].data.shift();
+            }
+            
+            chart.update('none');
+        }
+
+        function showAlert(temperature) {
+            alertCount++;
+            elements.alertCount.textContent = alertCount;
+            elements.alertBanner.style.display = 'block';
+            
+            // Hide alert after 10 seconds
+            setTimeout(() => {
+                elements.alertBanner.style.display = 'none';
+            }, 10000);
+        }
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            elements.connectionStatus.textContent = 'Connected';
+            elements.connectionStatus.className = 'connection-status connected';
+            elements.systemStatus.textContent = 'Online';
+            connectionStartTime = new Date();
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            elements.connectionStatus.textContent = 'Disconnected';
+            elements.connectionStatus.className = 'connection-status disconnected';
+            elements.systemStatus.textContent = 'Offline';
+        });
+
+        socket.on('temperatureUpdate', (reading) => {
+            console.log('Temperature update:', reading);
+            
+            // Update current temperature display
+            elements.currentTemp.textContent = `${reading.temperature.toFixed(1)}°C`;
+            elements.lastUpdate.textContent = `Updated: ${formatTime(reading.timestamp)}`;
+            
+            // Update chart
+            updateChart(reading);
+            
+            // Check for alert condition
+            if (reading.temperature < threshold) {
+                showAlert(reading.temperature);
+            }
+        });
+
+        socket.on('temperatureHistory', (history) => {
+            console.log('Received temperature history:', history.length, 'readings');
+            
+            // Clear existing chart data
+            chart.data.labels = [];
+            chart.data.datasets[0].data = [];
+            chart.data.datasets[1].data = [];
+            
+            // Add historical data to chart
+            history.forEach(reading => {
+                updateChart(reading);
+            });
+            
+            // Update current temperature if we have data
+            if (history.length > 0) {
+                const latest = history[history.length - 1];
+                elements.currentTemp.textContent = `${latest.temperature.toFixed(1)}°C`;
+                elements.lastUpdate.textContent = `Updated: ${formatTime(latest.timestamp)}`;
+            }
+        });
+
+        // Fetch configuration on load
+        fetch('/api/config')
+            .then(response => response.json())
+            .then(config => {
+                threshold = config.minTemperatureThreshold;
+                elements.threshold.textContent = `${threshold}°C`;
+            })
+            .catch(error => console.error('Error fetching config:', error));
+
+        // Update timers
+        setInterval(updateConnectionTime, 1000);
+        setInterval(updateFooterTime, 1000);
+        
+        // Initial updates
+        updateConnectionTime();
+        updateFooterTime();
+    </script>
+</body>
+</html>
