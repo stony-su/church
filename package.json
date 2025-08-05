@@ -8,15 +8,20 @@
     "dev": "nodemon server.js",
     "temp-simulator": "node temperature-simulator.js"
   },
-  "keywords": ["temperature", "monitoring", "raspberry-pi", "arduino"],
+  "keywords": [
+    "temperature",
+    "monitoring",
+    "raspberry-pi",
+    "arduino"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "nodemailer": "^6.9.4",
+    "axios": "^1.4.0",
     "cors": "^2.8.5",
-    "axios": "^1.4.0"
+    "express": "^4.18.2",
+    "nodemailer": "^6.10.1",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

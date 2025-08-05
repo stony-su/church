@@ -15,7 +15,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #3498db; /* Changed from gradient to plain blue */
             color: #333;
             min-height: 100vh;
             padding: 20px;
@@ -171,7 +171,7 @@
         <div class="connection-status" id="connectionStatus">Connecting...</div>
         
         <div class="header">
-            <h1>🌡️ Water Temperature Monitor</h1>
+            <h1>Water Temperature Monitor</h1>
             <p>Real-time temperature monitoring system</p>
         </div>
 
@@ -206,14 +206,16 @@
         </div>
 
         <div class="chart-container">
-            <h2>📈 Temperature History</h2>
+            <h2>Temperature History</h2>
             <div class="chart-wrapper">
                 <canvas id="temperatureChart"></canvas>
             </div>
         </div>
 
+        <button id="decreaseTempBtn">Decrease Temperature</button>
+
         <div class="footer">
-            <p>🔧 Raspberry Pi Water Temperature Monitoring System | Last updated: <span id="footerTime">--</span></p>
+            <p>Raspberry Pi Water Temperature Monitoring System | Last updated: <span id="footerTime">--</span></p>
         </div>
     </div>
 
@@ -419,6 +421,10 @@
         // Initial updates
         updateConnectionTime();
         updateFooterTime();
+
+        document.getElementById('decreaseTempBtn').onclick = async function() {
+            await fetch('/api/temperature/decrease', { method: 'POST' });
+        };
     </script>
 </body>
 </html>

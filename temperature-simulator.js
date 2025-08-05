@@ -12,8 +12,8 @@ let lastTemperature = baseTemperature;
 
 // Function to generate realistic fluctuating temperature
 function generateTemperature() {
-    // Random fluctuation (-0.5 to +0.5 degrees)
-    const randomFluctuation = (Math.random() - 0.5) * 1.0;
+    // Random fluctuation (-1.5 to +1.5 degrees)
+    const randomFluctuation = (Math.random() - 0.5) * 5.0;
     
     // Occasional trend changes (5% chance each update)
     if (Math.random() < 0.05) {

@@ -17,9 +17,9 @@ const io = socketIo(server, {
 // Configuration variables - Edit these as needed
 const PORT = process.env.PORT || 3000;
 const MIN_TEMPERATURE_THRESHOLD = 15; // Temperature below which to send warning (in Celsius)
-const GMAIL_USER = process.env.GMAIL_USER || 'your-email@gmail.com';
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || 'your-app-password';
-const ALERT_EMAIL = process.env.ALERT_EMAIL || 'alert-recipient@gmail.com';
+const GMAIL_USER = process.env.GMAIL_USER || 'justinleealt3@gmail.com';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || 'Darren@09';
+const ALERT_EMAIL = process.env.ALERT_EMAIL || 'darrensu09@gmail.com';
 
 // Middleware
 app.use(cors());
@@ -31,7 +31,7 @@ let temperatureHistory = [];
 const MAX_HISTORY_LENGTH = 100;
 
 // Email configuration
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
         user: GMAIL_USER,
@@ -56,7 +56,7 @@ async function sendTemperatureAlert(temperature) {
     const mailOptions = {
         from: GMAIL_USER,
         to: ALERT_EMAIL,
-        subject: '🚨 Water Temperature Alert - Low Temperature Detected',
+        subject: 'Water Temperature Alert - Low Temperature Detected',
         html: `
             <h2>Water Temperature Alert</h2>
             <p><strong>Warning:</strong> Water temperature has dropped below the threshold!</p>
@@ -111,6 +111,8 @@ app.post('/api/temperature', (req, res) => {
 });
 */
 
+let wasAboveThreshold = true; // Track last state
+
 // External script temperature endpoint
 app.post('/api/temperature', (req, res) => {
     const { temperature } = req.body;
@@ -133,15 +135,40 @@ app.post('/api/temperature', (req, res) => {
         temperatureHistory.shift();
     }
     
-    // Check if temperature is below threshold
-    if (temperature < MIN_TEMPERATURE_THRESHOLD) {
+    // Only send alert on transition from above to below threshold
+    if (wasAboveThreshold && temperature < MIN_TEMPERATURE_THRESHOLD) {
         sendTemperatureAlert(temperature);
     }
+    wasAboveThreshold = temperature >= MIN_TEMPERATURE_THRESHOLD;
     
     // Broadcast to all connected clients
     io.emit('temperatureUpdate', reading);
     
     res.json({ status: 'success', received: reading });
+});
+
+// Simulated current temperature (for demo purposes)
+let simulatedTemperature = 20;
+
+// Endpoint to decrease temperature
+app.post('/api/temperature/decrease', (req, res) => {
+    simulatedTemperature -= 1;
+    // Reuse the same logic as /api/temperature
+    const reading = {
+        temperature: simulatedTemperature,
+        timestamp: new Date().toISOString(),
+        source: 'button'
+    };
+    temperatureHistory.push(reading);
+    if (temperatureHistory.length > MAX_HISTORY_LENGTH) {
+        temperatureHistory.shift();
+    }
+    if (wasAboveThreshold && simulatedTemperature < MIN_TEMPERATURE_THRESHOLD) {
+        sendTemperatureAlert(simulatedTemperature);
+    }
+    wasAboveThreshold = simulatedTemperature >= MIN_TEMPERATURE_THRESHOLD;
+    io.emit('temperatureUpdate', reading);
+    res.json({ status: 'success', newTemperature: simulatedTemperature });
 });
 
 // Get temperature history
